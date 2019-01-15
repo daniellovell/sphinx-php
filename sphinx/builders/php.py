@@ -224,7 +224,11 @@ class StandalonePHPBuilder(Builder):
 
         self.script_files.append(JavaScript(filename, **kwargs))
 
-
+    @property
+    def default_translator_class(self):  # type: ignore
+        # Use HTMLTranslator for PHP builder
+        return HTMLTranslator
+    
     @property
     def math_renderer_name(self):
         # type: () -> str
