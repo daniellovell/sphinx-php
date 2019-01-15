@@ -51,6 +51,9 @@ from sphinx.util.osutil import SEP, os_path, relative_uri, ensuredir, \
     movefile, copyfile
 from sphinx.writers.html import HTMLWriter, HTMLTranslator
 
+from sphinx.builders.html import get_stable_hash, Stylesheet, JSContainer, JavaScript, BuildInfo, \
+    convert_html_css_files, convert_html_js_files, setup_js_tag_helper, validate_math_renderer
+
 if False:
     # For type annotation
     from typing import Any, Dict, IO, Iterable, Iterator, List, Set, Type, Tuple  # NOQA
@@ -73,148 +76,6 @@ LAST_BUILD_FILENAME = 'last_build'
 
 logger = logging.getLogger(__name__)
 return_codes_re = re.compile('[\r\n]+')
-
-
-def get_stable_hash(obj):
-    # type: (Any) -> str
-    """
-    Return a stable hash for a Python data structure.  We can't just use
-    the md5 of str(obj) since for example dictionary items are enumerated
-    in unpredictable order due to hash randomization in newer Pythons.
-    """
-    if isinstance(obj, dict):
-        return get_stable_hash(list(obj.items()))
-    elif isinstance(obj, (list, tuple)):
-        obj = sorted(get_stable_hash(o) for o in obj)
-    return md5(str(obj).encode()).hexdigest()
-
-
-class Stylesheet(str):
-    """A metadata of stylesheet.
-
-    To keep compatibility with old themes, an instance of stylesheet behaves as
-    its filename (str).
-    """
-
-    attributes = None   # type: Dict[str, str]
-    filename = None     # type: str
-
-    def __new__(cls, filename, *args, **attributes):
-        # type: (str, str, str) -> None
-        self = str.__new__(cls, filename)  # type: ignore
-        self.filename = filename
-        self.attributes = attributes
-        self.attributes.setdefault('rel', 'stylesheet')
-        self.attributes.setdefault('type', 'text/css')
-        if args:  # old style arguments (rel, title)
-            self.attributes['rel'] = args[0]
-            self.attributes['title'] = args[1]
-
-        return self
-
-
-class JSContainer(list):
-    """The container for JavaScript scripts."""
-    def insert(self, index, obj):
-        # type: (int, str) -> None
-        warnings.warn('builder.script_files is deprecated. '
-                      'Please use app.add_js_file() instead.',
-                      RemovedInSphinx30Warning, stacklevel=2)
-        super().insert(index, obj)
-
-    def extend(self, other):  # type: ignore
-        # type: (List[str]) -> None
-        warnings.warn('builder.script_files is deprecated. '
-                      'Please use app.add_js_file() instead.',
-                      RemovedInSphinx30Warning, stacklevel=2)
-        for item in other:
-            self.append(item)
-
-    def __iadd__(self, other):  # type: ignore
-        # type: (List[str]) -> JSContainer
-        warnings.warn('builder.script_files is deprecated. '
-                      'Please use app.add_js_file() instead.',
-                      RemovedInSphinx30Warning, stacklevel=2)
-        for item in other:
-            self.append(item)
-        return self
-
-    def __add__(self, other):
-        # type: (List[str]) -> JSContainer
-        ret = JSContainer(self)
-        ret += other
-        return ret
-
-
-class JavaScript(str):
-    """A metadata of javascript file.
-
-    To keep compatibility with old themes, an instance of javascript behaves as
-    its filename (str).
-    """
-
-    attributes = None   # type: Dict[str, str]
-    filename = None     # type: str
-
-    def __new__(cls, filename, **attributes):
-        # type: (str, **str) -> None
-        self = str.__new__(cls, filename)  # type: ignore
-        self.filename = filename
-        self.attributes = attributes
-        self.attributes.setdefault('type', 'text/javascript')
-
-        return self
-
-
-class BuildInfo:
-    """buildinfo file manipulator.
-
-    PHPBuilder and its family are storing their own envdata to ``.buildinfo``.
-    This class is a manipulator for the file.
-    """
-
-    @classmethod
-    def load(cls, f):
-        # type: (IO) -> BuildInfo
-        try:
-            lines = f.readlines()
-            assert lines[0].rstrip() == '# Sphinx build info version 1'
-            assert lines[2].startswith('config: ')
-            assert lines[3].startswith('tags: ')
-
-            build_info = BuildInfo()
-            build_info.config_hash = lines[2].split()[1].strip()
-            build_info.tags_hash = lines[3].split()[1].strip()
-            return build_info
-        except Exception as exc:
-            raise ValueError(__('build info file is broken: %r') % exc)
-
-    def __init__(self, config=None, tags=None, config_categories=[]):
-        # type: (Config, Tags, List[str]) -> None
-        self.config_hash = ''
-        self.tags_hash = ''
-
-        if config:
-            values = dict((c.name, c.value) for c in config.filter(config_categories))
-            self.config_hash = get_stable_hash(values)
-
-        if tags:
-            self.tags_hash = get_stable_hash(sorted(tags))
-
-    def __eq__(self, other):  # type: ignore
-        # type: (BuildInfo) -> bool
-        return (self.config_hash == other.config_hash and
-                self.tags_hash == other.tags_hash)
-
-    def dump(self, f):
-        # type: (IO) -> None
-        f.write('# Sphinx build info version 1\n'
-                '# This file hashes the configuration used when building these files.'
-                ' When it is not found, a full rebuild will be done.\n'
-                'config: %s\n'
-                'tags: %s\n' %
-                (self.config_hash, self.tags_hash))
-
 
 class StandalonePHPBuilder(Builder):
     """
@@ -375,17 +236,6 @@ class StandalonePHPBuilder(Builder):
 
         self.script_files.append(JavaScript(filename, **kwargs))
 
-    @property
-    def default_translator_class(self):  # type: ignore
-        # type: () -> Type[nodes.NodeVisitor]
-        use_html5_writer = self.config.html_experimental_html5_writer
-        if use_html5_writer is None:
-            use_html5_writer = self.default_html5_translator
-
-        if use_html5_writer and html5_ready:
-            return HTML5Translator
-        else:
-            return HTMLTranslator
 
     @property
     def math_renderer_name(self):
@@ -1313,104 +1163,11 @@ class SerializingPHPBuilder(StandalonePHPBuilder):
         # when to reload its environment and clear the cache
         open(path.join(self.outdir, LAST_BUILD_FILENAME), 'w').close()
 
-
-def convert_html_css_files(app, config):
-    # type: (Sphinx, Config) -> None
-    """This converts string styled html_css_files to tuple styled one."""
-    html_css_files = []  # type: List[Tuple[str, Dict]]
-    for entry in config.html_css_files:
-        if isinstance(entry, str):
-            html_css_files.append((entry, {}))
-        else:
-            try:
-                filename, attrs = entry
-                html_css_files.append((filename, attrs))
-            except Exception:
-                logger.warning(__('invalid css_file: %r, ignored'), entry)
-                continue
-
-    config.html_css_files = html_css_files  # type: ignore
-
-
-def convert_html_js_files(app, config):
-    # type: (Sphinx, Config) -> None
-    """This converts string styled html_js_files to tuple styled one."""
-    html_js_files = []  # type: List[Tuple[str, Dict]]
-    for entry in config.html_js_files:
-        if isinstance(entry, str):
-            html_js_files.append((entry, {}))
-        else:
-            try:
-                filename, attrs = entry
-                html_js_files.append((filename, attrs))
-            except Exception:
-                logger.warning(__('invalid js_file: %r, ignored'), entry)
-                continue
-
-    config.html_js_files = html_js_files  # type: ignore
-
-
-def setup_js_tag_helper(app, pagename, templatexname, context, doctree):
-    # type: (Sphinx, str, str, Dict, nodes.Node) -> None
-    """Set up js_tag() template helper.
-
-    .. note:: This set up function is added to keep compatibility with webhelper.
-    """
-    pathto = context.get('pathto')
-
-    def js_tag(js):
-        # type: (JavaScript) -> str
-        attrs = []
-        body = ''
-        if isinstance(js, JavaScript):
-            for key in sorted(js.attributes):
-                value = js.attributes[key]
-                if value is not None:
-                    if key == 'body':
-                        body = value
-                    else:
-                        attrs.append('%s="%s"' % (key, html.escape(value, True)))
-            if js.filename:
-                attrs.append('src="%s"' % pathto(js.filename, resource=True))
-        else:
-            # str value (old styled)
-            attrs.append('type="text/javascript"')
-            attrs.append('src="%s"' % pathto(js, resource=True))
-        return '<script %s>%s</script>' % (' '.join(attrs), body)
-
-    context['js_tag'] = js_tag
-
-
-def validate_math_renderer(app):
-    # type: (Sphinx) -> None
-    if app.builder.format != 'html':
-        return
-
-    name = app.builder.math_renderer_name  # type: ignore
-    if name is None:
-        raise ConfigError(__('Many math_renderers are registered. '
-                             'But no math_renderer is selected.'))
-    elif name not in app.registry.html_inline_math_renderers:
-        raise ConfigError(__('Unknown math_renderer %r is given.') % name)
-
-
-# for compatibility
-from sphinx.builders.singlehtml import SingleFileHTMLBuilder  # NOQA
-
-deprecated_alias('sphinx.builders.html',
-                 {
-                     'SingleFileHTMLBuilder': SingleFileHTMLBuilder,
-                 },
-                 RemovedInSphinx40Warning)
-
-
 def setup(app):
     # type: (Sphinx) -> Dict[str, Any]
     # builders
-    app.add_builder(StandaloneHTMLBuilder)
-    app.add_builder(DirectoryHTMLBuilder)
-    app.add_builder(PickleHTMLBuilder)
-    app.add_builder(JSONHTMLBuilder)
+    app.add_builder(StandalonePHPBuilder)
+    app.add_builder(DirectoryPHPBuilder)
 
     # config values
     app.add_config_value('html_theme', 'alabaster', 'html')
