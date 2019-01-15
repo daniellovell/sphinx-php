@@ -62,13 +62,6 @@ if False:
     from sphinx.domains import Domain, Index, IndexEntry  # NOQA
     from sphinx.util.tags import Tags  # NOQA
 
-# Experimental HTML5 Writer
-if is_html5_writer_available():
-    from sphinx.writers.html5 import HTML5Translator
-    html5_ready = True
-else:
-    html5_ready = False
-
 #: the filename for the inventory of objects
 INVENTORY_FILENAME = 'objects.inv'
 #: the filename for the "last build" file (for serializing builders)
@@ -149,11 +142,6 @@ class StandalonePHPBuilder(Builder):
             self.link_suffix = self.out_suffix
 
         self.use_index = self.get_builder_config('use_index', 'html')
-
-        if self.config.html_experimental_html5_writer and not html5_ready:
-            logger.warning(__('html_experimental_html5_writer is set, but current version '
-                              'is old. Docutils\' version should be 0.13 or newer, but %s.'),
-                           docutils.__version__)
 
     def create_build_info(self):
         # type: () -> BuildInfo
@@ -426,8 +414,7 @@ class StandalonePHPBuilder(Builder):
             'builder': self.name,
             'parents': [],
             'logo': logo,
-            'favicon': favicon,
-            'html5_doctype': self.config.html_experimental_html5_writer and html5_ready,
+            'favicon': favicon
         }
         if self.theme:
             self.globalcontext.update(
