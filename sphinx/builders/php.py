@@ -1156,15 +1156,6 @@ def setup(app):
     app.add_builder(StandalonePHPBuilder)
     app.add_builder(DirectoryPHPBuilder)
 
-    # event handlers
-    app.connect('config-inited', convert_html_css_files)
-    app.connect('config-inited', convert_html_js_files)
-    app.connect('builder-inited', validate_math_renderer)
-    app.connect('html-page-context', setup_js_tag_helper)
-
-    # load default math renderer
-    app.setup_extension('sphinx.ext.mathjax')
-
     return {
         'version': 'builtin',
         'parallel_read_safe': True,
