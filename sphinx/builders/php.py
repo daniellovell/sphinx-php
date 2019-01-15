@@ -220,14 +220,14 @@ class StandalonePHPBuilder(Builder):
     """
     Builds standalone PHP docs.
     """
-    name = 'html'
-    format = 'html'
+    name = 'php'
+    format = 'php'
     epilog = __('The PHP pages are in %(outdir)s.')
 
     copysource = True
     allow_parallel = True
-    out_suffix = '.html'
-    link_suffix = '.html'  # defaults to matching out_suffix
+    out_suffix = '.php'
+    link_suffix = '.php'  # defaults to matching out_suffix
     indexer_format = js_index  # type: Any
     indexer_dumps_unicode = True
     # create links to original images from images [True/False]
