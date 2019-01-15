@@ -73,6 +73,7 @@ builtin_extensions = (
     'sphinx.builders.latex',
     'sphinx.builders.linkcheck',
     'sphinx.builders.manpage',
+    'sphinx.builders.php',
     'sphinx.builders.qthelp',
     'sphinx.builders.singlehtml',
     'sphinx.builders.texinfo',
