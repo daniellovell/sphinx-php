@@ -699,6 +699,7 @@ class StandaloneHTMLBuilder(Builder):
         self.finish_tasks.add_task(self.copy_image_files)
         self.finish_tasks.add_task(self.copy_download_files)
         self.finish_tasks.add_task(self.copy_static_files)
+        self.finish_tasks.add_task(self.copy_custom_pages)
         self.finish_tasks.add_task(self.copy_extra_files)
         self.finish_tasks.add_task(self.write_buildinfo)
 

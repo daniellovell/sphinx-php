@@ -661,6 +661,9 @@ class StandalonePHPBuilder(Builder):
                 except OSError as err:
                     logger.warning(__('cannot copy downloadable file %r: %s'),
                                    path.join(self.srcdir, src), err)
+                                   
+    def copy_custom_pages(self):
+
 
     def copy_static_files(self):
         # type: () -> None
