@@ -662,8 +662,17 @@ class StandalonePHPBuilder(Builder):
                 except OSError as err:
                     logger.warning(__('cannot copy downloadable file %r: %s'),
                                    path.join(self.srcdir, src), err)
-                                   
+
     def copy_custom_pages(self):
+         # then, copy over all user-supplied static files
+        excluded = Matcher(self.config.exclude_patterns + ["**/.*"])
+        for static_path in self.config.html_static_path:
+            entry = path.join(self.confdir, static_path)
+            if not path.exists(entry):
+                logger.warning(__('html_static_path entry %r does not exist'), entry)
+                continue
+            copy_asset(entry, path.join(self.outdir, '_static'), excluded,
+                        context=ctx, renderer=self.templates)
 
 
     def copy_static_files(self):
